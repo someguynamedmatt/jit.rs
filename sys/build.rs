@@ -1,36 +1,36 @@
-    use std::io;
-    use std::fs;
-    use std::env;
-    use std::path::Path;
-    use std::process::Command;
+use std::io;
+use std::fs;
+use std::env;
+use std::path::Path;
+use std::process::Command;
 
-    #[cfg(windows)]
-    static FINAL_LIB:&'static str = "libjit.dll";
+#[cfg(windows)]
+static FINAL_LIB:&'static str = "libjit.dll";
 
-    #[cfg(not(windows))]
-    static FINAL_LIB:&'static str = "libjit.a";
+#[cfg(not(windows))]
+static FINAL_LIB:&'static str = "libjit.a";
 
-    static MINGW:&'static str = "c:/mingw";
+static MINGW:&'static str = "c:/mingw";
 
-    static INSTALL_AUTOTOOLS_MSG:&'static str = "Failed to generate configuration script. Did you forget to install autotools, bison, flex, and libtool?";
+static INSTALL_AUTOTOOLS_MSG:&'static str = "Failed to generate configuration script. Did you forget to install autotools, bison, flex, and libtool?";
 
-    static USE_CARGO_MSG:&'static str = "Build script should be ran with Cargo, run `cargo build` instead";
+static USE_CARGO_MSG:&'static str = "Build script should be ran with Cargo, run `cargo build` instead";
 
-    #[cfg(windows)]
-    static INSTALL_COMPILER_MSG:&'static str = "Failed to configure the library for your platform. Did you forget to install MinGW and MSYS?";
-    #[cfg(not(windows))]
-    static INSTALL_COMPILER_MSG:&'static str = "Failed to configure the library for your platform. Did you forget to install a C compiler?";
+#[cfg(windows)]
+static INSTALL_COMPILER_MSG:&'static str = "Failed to configure the library for your platform. Did you forget to install MinGW and MSYS?";
+#[cfg(not(windows))]
+static INSTALL_COMPILER_MSG:&'static str = "Failed to configure the library for your platform. Did you forget to install a C compiler?";
 
-    // PathExt::exists isn't stable, so fake it by querying file metadata.
-    fn exists<P: AsRef<Path>>(path: P) -> io::Result<bool> {
-    match fs::metadata(path) {
-        Ok(_) => Ok(true),
-        Err(ref err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(err) => Err(err)
-    }
-    }
+// PathExt::exists isn't stable, so fake it by querying file metadata.
+fn exists<P: AsRef<Path>>(path: P) -> io::Result<bool> {
+match fs::metadata(path) {
+    Ok(_) => Ok(true),
+    Err(ref err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
+    Err(err) => Err(err)
+}
+}
 
-    fn main() {
+fn main() {
     if cfg!(windows) && !exists(&Path::new(MINGW)).unwrap() {
         panic!("{}", INSTALL_COMPILER_MSG);
     }
@@ -91,4 +91,4 @@
         let text = text.map(|text| format!(" - {}", text)).unwrap_or(String::new());
         panic!("{:?} failed{}", cmd, text)
     }
-    }
+}
