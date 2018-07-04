@@ -13,8 +13,6 @@ use syntax::abi::Abi;
 use syntax::ast_util::empty_generics;
 use syntax::ast::*;
 use syntax::ext::base::*;
-use syntax::ext::build::*;
-use syntax::ext::quote::rt::ToTokens;
 use syntax::ext::source_util::*;
 use syntax::ptr::P;
 use syntax::owned_slice::OwnedSlice;
@@ -149,7 +147,7 @@ fn expand_derive_compile(cx: &mut AstBuilder, sp: Span, _meta: &MetaItem, item: 
                                         ExplicitSelf_::SelfValue(cx.ident_of("b"))),
                                     decl: cx.fn_decl(
                                         vec![
-                                            Arg.new_self(sp, ast::Mutability::MutImmutable,
+                                            ast::Arg::new_self(sp, ast::Mutability::MutImmutable,
                                                           cx.ident_of("self")),
                                             cx.arg(sp, func, cx.ty_rptr(sp, cx.ty_path(jit_func),
                                                                         None, ast::Mutability::MutImmutable))],
@@ -195,7 +193,7 @@ fn expand_derive_compile(cx: &mut AstBuilder, sp: Span, _meta: &MetaItem, item: 
                 let has_name = field.node.ident().is_some();
                 if has_name && names.is_some() {
                     let ident = field.node.ident().unwrap();
-                    let expr = expand_stringify(cx, sp, &[TokenTree::TtToken(sp, Token::Ident(ident, IdentStyle::Plain))]);
+                    let expr = expand_stringify(cx, sp, &[parse::TokenTree::TtToken(sp, Token::Ident(ident, IdentStyle::Plain))]);
                     names.as_mut().unwrap().push(expr.make_expr().unwrap());
                 } else {
                     names = None
@@ -282,10 +280,10 @@ fn expand_derive_compile(cx: &mut AstBuilder, sp: Span, _meta: &MetaItem, item: 
                                     ExplicitSelf_::SelfValue(cx.ident_of("b"))),
                                 decl: cx.fn_decl(
                                     vec![
-                                        Arg.new_self(sp, MutImmutable,
+                                        ast::Arg::new_self(sp, hir::MutImmutable,
                                                       cx.ident_of("self")),
                                         cx.arg(sp, func, cx.ty_rptr(sp, cx.ty_path(jit_func),
-                                                                    None, MutImmutable))],
+                                                                    None, hir::MutImmutable))],
                                     jit_value),
                                 generics: empty_generics(),
                             },
@@ -426,7 +424,7 @@ fn compile_expr(cx: &mut AstBuilder, ctx: &ExprCtxt, expr: P<Expr>) -> P<Expr> {
         }
     }
 }
-fn expand_jit(cx: &mut AstBuilder, sp: Span, tt: &[TokenTree]) -> Box<MacResult> {
+fn expand_jit(cx: &mut AstBuilder, sp: Span, tt: &[parse::TokenTree]) -> Box<MacResult> {
     if let Some(exprs) = get_exprs_from_tts(cx, sp, tt) {
         let ctx = ExprCtxt {
             sp: sp
@@ -492,7 +490,7 @@ fn expand_jit(cx: &mut AstBuilder, sp: Span, tt: &[TokenTree]) -> Box<MacResult>
 }
 #[plugin_registrar]
 pub fn plugin_registrar(reg: &mut Registry) {
-    reg.register_syntax_extension(token::intern("derive_Compile"), SyntaxExtension::MultiDecorator(Box::new(expand_derive_compile)));
+    reg.register_syntax_extension(parse::token.intern("derive_Compile"), SyntaxExtension::MultiDecorator(Box::new(expand_derive_compile)));
     reg.register_macro("jit", expand_jit);
 }
 
