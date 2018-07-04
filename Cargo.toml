@@ -19,6 +19,7 @@ path = "src/jit.rs"
 [dependencies]
 libc = "*"
 bitflags = "1.0.3"
+matches = "0.1.6"
 
 [dependencies.libjit-sys]
 path = "sys"

@@ -1,14 +1,14 @@
-#![feature(rustc_private, plugin_registrar, quote, plugin)]
-#![plugin(matches)]
+#![feature(rustc_private, plugin_registrar, quote)]
+//#![plugin(matches)] extern crate matches;
+#[macro_use] extern crate matches;
 extern crate syntax;
 extern crate rustc;
 #[no_link]
-//#[macro_use]
-//extern crate matches;
 
 use syntax::codemap::*;
 use syntax::parse::*;
 use syntax::parse::token::{Token, IdentStyle};
+use syntax::ext::base::ExtCtxt::{AstBuilder};
 use syntax::abi::Abi;
 use syntax::ast_util::empty_generics;
 use syntax::ast::*;
@@ -23,7 +23,7 @@ use rustc::plugin::Registry;
 static BAD_STRUCT:&'static str = "jit-compatible structs must be packed, mark with #[repr(packed)] to fix";
 static BAD_ITEM:&'static str = "only structs can be compatible with LibJIT";
 
-fn simple_type(cx: &mut ExtCtxt, name: &'static str, as_cow:bool) -> P<Expr> {
+fn simple_type(cx: &mut AstBuilder, name: &'static str, as_cow:bool) -> P<Expr> {
     let new_name = format!("get_{}", name);
     let name = cx.ident_of(&new_name);
     let mut expr = quote_expr!(cx, jit::typecs::$name());
@@ -32,7 +32,7 @@ fn simple_type(cx: &mut ExtCtxt, name: &'static str, as_cow:bool) -> P<Expr> {
     }
     expr
 }
-fn type_expr(cx: &mut ExtCtxt, sp: Span, ty: P<Ty>, as_cow: bool) -> P<Expr> {
+fn type_expr(cx: &mut AstBuilder, sp: Span, ty: P<Ty>, as_cow: bool) -> P<Expr> {
     match ty.node {
         Ty_::TyParen(ref ty) => type_expr(cx, sp, ty.clone(), as_cow),
         Ty_::TyPtr(_) | Ty_::TyRptr(_, _) => simple_type(cx, "VOID_PTR", as_cow),
@@ -72,7 +72,7 @@ fn type_expr(cx: &mut ExtCtxt, sp: Span, ty: P<Ty>, as_cow: bool) -> P<Expr> {
         }
     }
 }
-fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &Annotatable, push: &mut FnMut(Annotatable)) {
+fn expand_derive_compile(cx: &mut AstBuilder, sp: Span, _meta: &MetaItem, item: &Annotatable, push: &mut FnMut(Annotatable)) {
     let item = item.clone().expect_item();
     let name = item.ident;
     let jit = cx.ident_of("jit");
@@ -82,21 +82,22 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
     let jit_func = cx.path_all(sp, false, vec![jit, cx.ident_of("UncompiledFunction")], vec![jit_life], vec![], vec![]);
     let jit_val = cx.path(sp, vec![jit, cx.ident_of("Val")]);
     let jit_val_new = cx.path(sp, vec![jit, cx.ident_of("Val"), cx.ident_of("new")]);
-    let jit_value = cx.ty_rptr(sp, cx.ty_path(jit_val), Some(jit_life), Mutability::MutImmutable);
+    let jit_value = cx.ty_rptr(sp, cx.ty_path(jit_val), Some(jit_life), ast::Mutability::MutImmutable);
     let new_struct = cx.path(sp, vec![jit, cx.ident_of("Type"), cx.ident_of("new_struct")]);
     let func = cx.ident_of("func");
     let value = cx.ident_of("value");
     let offset = cx.ident_of("offset");
     let mut repr = None;
-    for attr in &item.attrs {
-        if let MetaItem_::MetaList(ref name, ref items) = attr.node.value.node {
-            if &**name == "repr" && items.len() == 1 {
-                if let MetaItem_::MetaWord(ref text) = items[0].node {
-                    repr = Some(&**text)
-                }
-            }
-        }
-    }
+    // TODO: Uncomment this and refactor. `attr.node` is not an attribute
+    //for attr in &item.attrs {
+        //if let MetaItem_::MetaList(ref name, ref items) = attr.node.value.node {
+            //if &**name == "repr" && items.len() == 1 {
+                //if let MetaItem_::MetaWord(ref text) = items[0].node {
+                    //repr = Some(&**text)
+                //}
+            //}
+        //}
+    //}
     match item.node {
         Item_::ItemEnum(_, _) => {
             if let Some(kind) = repr {
@@ -106,10 +107,10 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
                 let item = cx.item(sp, name, vec![], Item_::ItemImpl(
                     Unsafety::Normal,
                     ImplPolarity::Positive,
-                    Generics {
-                        lifetimes: vec![ LifetimeDef {lifetime: jit_life, bounds: vec![]}],
+                    ast::Generics {
+                        generic_params: vec![ LifetimeDef {lifetime: jit_life, bounds: vec![]}],
                         ty_params: OwnedSlice::empty(),
-                        where_clause: WhereClause {
+                        where_clause: ast::WhereClause {
                             id: DUMMY_NODE_ID,
                             predicates: vec![]
                         }
@@ -117,15 +118,14 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
                     Some(cx.trait_ref(jit_compile)),
                     cx.ty_ident(sp, name),
                     vec![
-                        P(ImplItem {
+                        P(ast::ImplItem {
                             attrs: vec![],
                             id: DUMMY_NODE_ID,
                             span: sp,
                             ident: cx.ident_of("get_type"),
-                            vis: Visibility::Inherited,
+                            vis: ast::Visibility::Inherited,
                             node: ImplItem_::MethodImplItem(
-                                MethodSig {
-                                    constness: Constness::NotConst,
+                                syn::MethodSig {
                                     unsafety: Unsafety::Normal,
                                     abi: Abi::Rust,
                                     explicit_self: respan(sp, ExplicitSelf_::SelfStatic),
@@ -134,15 +134,14 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
                                 },
                                 cx.block_expr(type_expr))
                         }),
-                        P(ImplItem {
+                        P(ast::ImplItem {
                             attrs: vec![],
                             id: DUMMY_NODE_ID,
                             span: sp,
                             ident: cx.ident_of("compile"),
-                            vis: Visibility::Inherited,
+                            vis: ast::Visibility::Inherited,
                             node: ImplItem_::MethodImplItem(
-                                MethodSig {
-                                    constness: Constness::NotConst,
+                                syn::MethodSig {
                                     unsafety: Unsafety::Normal,
                                     abi: Abi::Rust,
                                     explicit_self: respan(
@@ -150,10 +149,10 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
                                         ExplicitSelf_::SelfValue(cx.ident_of("b"))),
                                     decl: cx.fn_decl(
                                         vec![
-                                            Arg::new_self(sp, Mutability::MutImmutable,
+                                            Arg.new_self(sp, ast::Mutability::MutImmutable,
                                                           cx.ident_of("self")),
                                             cx.arg(sp, func, cx.ty_rptr(sp, cx.ty_path(jit_func),
-                                                                        None, Mutability::MutImmutable))],
+                                                                        None, ast::Mutability::MutImmutable))],
                                         jit_value),
                                     generics: empty_generics(),
                                 },
@@ -186,7 +185,7 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
                     self_type
                 ]
             )));
-            let lit_usize = LitIntType::UnsignedIntLit(UintTy::TyUs);
+            let lit_usize = ast::LitIntType::UnsignedIntLit(TyUs);
             if def.fields.len() > 1 {
                 compiler.push(cx.stmt_let(sp, true, offset, cx.expr_lit(sp, Lit_::LitInt(0, lit_usize))));
             }
@@ -226,16 +225,16 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
             let item = cx.item(sp, name, vec![], Item_::ItemImpl(
                 Unsafety::Normal,
                 ImplPolarity::Positive,
-                Generics {
-                    lifetimes: vec![ LifetimeDef {lifetime: jit_life, bounds: vec![]}],
+                ast::Generics {
+                    generic_params: vec![ LifetimeDef {lifetime: jit_life, bounds: vec![]}],
                     ty_params: gen.ty_params.clone(),
-                    where_clause: WhereClause {
+                    where_clause: ast::WhereClause {
                         id: DUMMY_NODE_ID,
                         predicates: gen.ty_params.iter()
                             .map(|param| WherePredicate::BoundPredicate(
                                 WhereBoundPredicate {
                                     span: sp,
-                                    bound_lifetimes: vec![],
+                                    bound_generic_params: vec![],
                                     bounded_ty: cx.ty_ident(sp, param.ident),
                                     bounds: OwnedSlice::from_vec(vec![
                                         TyParamBound::TraitTyParamBound(
@@ -251,15 +250,14 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
                 Some(cx.trait_ref(jit_compile)),
                 self_ty,
                 vec![
-                    P(ImplItem {
+                    P(ast::ImplItem {
                         attrs: vec![],
                         id: DUMMY_NODE_ID,
                         span: sp,
                         ident: cx.ident_of("get_type"),
-                        vis: Visibility::Inherited,
+                        vis: ast::Visibility::Inherited,
                         node: ImplItem_::MethodImplItem(
-                            MethodSig {
-                                constness: Constness::NotConst,
+                            syn::MethodSig {
                                 unsafety: Unsafety::Normal,
                                 abi: Abi::Rust,
                                 explicit_self: respan(sp, ExplicitSelf_::SelfStatic),
@@ -269,15 +267,14 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
                             cx.block_expr(type_expr)
                         )
                     }),
-                    P(ImplItem {
+                    P(ast::ImplItem {
                         attrs: vec![],
                         id: DUMMY_NODE_ID,
                         span: sp,
                         ident: cx.ident_of("compile"),
-                        vis: Visibility::Inherited,
+                        vis: ast::Visibility::Inherited,
                         node: ImplItem_::MethodImplItem(
-                            MethodSig {
-                                constness: Constness::NotConst,
+                            syn::MethodSig {
                                 unsafety: Unsafety::Normal,
                                 abi: Abi::Rust,
                                 explicit_self: respan(
@@ -285,10 +282,10 @@ fn expand_derive_compile(cx: &mut ExtCtxt, sp: Span, _meta: &MetaItem, item: &An
                                     ExplicitSelf_::SelfValue(cx.ident_of("b"))),
                                 decl: cx.fn_decl(
                                     vec![
-                                        Arg::new_self(sp, Mutability::MutImmutable,
+                                        Arg.new_self(sp, MutImmutable,
                                                       cx.ident_of("self")),
                                         cx.arg(sp, func, cx.ty_rptr(sp, cx.ty_path(jit_func),
-                                                                    None, Mutability::MutImmutable))],
+                                                                    None, MutImmutable))],
                                     jit_value),
                                 generics: empty_generics(),
                             },
@@ -315,7 +312,7 @@ struct ExprCtxt {
     sp: Span
 }
 
-fn compile_expr(cx: &mut ExtCtxt, ctx: &ExprCtxt, expr: P<Expr>) -> P<Expr> {
+fn compile_expr(cx: &mut AstBuilder, ctx: &ExprCtxt, expr: P<Expr>) -> P<Expr> {
     let sp = expr.span;
     match expr.node {
         Expr_::ExprLit(_) => {
@@ -324,15 +321,15 @@ fn compile_expr(cx: &mut ExtCtxt, ctx: &ExprCtxt, expr: P<Expr>) -> P<Expr> {
         Expr_::ExprUnary(op, ref value) => {
             let value = compile_expr(cx, ctx, value.clone());
             match op {
-                UnOp::UnDeref => {
+                UnDeref => {
                     quote_expr!(cx, {
                         let value = $value;
                         func.insn_load_relative(value, 0, value.get_type().get_ref().unwrap())
                     })
                 },
-                UnOp::UnUniq => quote_expr!(cx, func.insn_alloca($value)),
-                UnOp::UnNot => quote_expr!(cx, func.insn_not($value)),
-                UnOp::UnNeg => quote_expr!(cx, func.insn_neg($value))
+                UnUniq => quote_expr!(cx, func.insn_alloca($value)),
+                UnNot => quote_expr!(cx, func.insn_not($value)),
+                UnNeg => quote_expr!(cx, func.insn_neg($value))
             }
         },
         Expr_::ExprBinary(op, ref x, ref y) => {
@@ -429,7 +426,7 @@ fn compile_expr(cx: &mut ExtCtxt, ctx: &ExprCtxt, expr: P<Expr>) -> P<Expr> {
         }
     }
 }
-fn expand_jit(cx: &mut ExtCtxt, sp: Span, tt: &[TokenTree]) -> Box<MacResult> {
+fn expand_jit(cx: &mut AstBuilder, sp: Span, tt: &[TokenTree]) -> Box<MacResult> {
     if let Some(exprs) = get_exprs_from_tts(cx, sp, tt) {
         let ctx = ExprCtxt {
             sp: sp
@@ -439,7 +436,7 @@ fn expand_jit(cx: &mut ExtCtxt, sp: Span, tt: &[TokenTree]) -> Box<MacResult> {
             let ty = cx.ty(sp, Ty_::TyBareFn(P(BareFnTy {
                 unsafety: Unsafety::Normal,
                 abi: Abi::Rust,
-                lifetimes: vec![],
+                generic_params: vec![],
                 decl: decl.clone()
             })));
             let ty_expr = type_expr(cx, sp, ty, false);
